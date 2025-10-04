@@ -1,0 +1,16 @@
+{
+  "name": "evilworker-aws",
+  "version": "1.0.0",
+  "description": "EvilWorker deployed to AWS App Runner",
+  "main": "proxy_server.js",
+  "scripts": {
+    "start": "node proxy_server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {},
+  "keywords": ["evilworker", "aitm", "phishing"],
+  "author": "EvilWorker",
+  "license": "BSD-2-Clause"
+}
